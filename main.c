@@ -201,23 +201,26 @@ static void wait_process_with_flush(pid_t pid, int *exit_code_ptr)
 		io_flush(FULL_FLUSH);
 	}
 
-	/* TODO: If the child exited on a signal, then log an
-	 * appropriate error message.  Perhaps we should also accept a
-	 * message describing the purpose of the child.  Also indicate
-	 * this to the caller so that they know something went wrong. */
 	if (waited_pid < 0) {
 		rsyserr(FERROR, errno, "waitpid");
 		*exit_code_ptr = RERR_WAITCHILD;
 	} else if (!WIFEXITED(status)) {
 #ifdef WCOREDUMP
-		if (WCOREDUMP(status))
+		if (WCOREDUMP(status)) {
+			rprintf(FERROR, "child process %ld crashed (core dumped)\n",
+				(long)waited_pid);
 			*exit_code_ptr = RERR_CRASHED;
-		else
+		} else
 #endif
-		if (WIFSIGNALED(status))
+		if (WIFSIGNALED(status)) {
+			rprintf(FERROR, "child process %ld killed by signal %d\n",
+				(long)waited_pid, WTERMSIG(status));
 			*exit_code_ptr = RERR_TERMINATED;
-		else
+		} else {
+			rprintf(FERROR, "child process %ld exited abnormally\n",
+				(long)waited_pid);
 			*exit_code_ptr = RERR_WAITCHILD;
+		}
 	} else
 		*exit_code_ptr = WEXITSTATUS(status);
 }
