@@ -47,6 +47,16 @@ static struct sigaction sigact;
 
 static int sock_exec(const char *prog);
 
+/* Storage for daemon child deaths that arrived via SIGCHLD. We save
+ * (pid, status) pairs in the signal handler and drain them in the main
+ * accept loop where it is safe to call rprintf(). */
+#ifdef WNOHANG
+# define MAX_DEAD_CHILDREN 32
+struct dead_child { pid_t pid; int status; };
+static volatile sig_atomic_t num_dead_children;
+static struct dead_child dead_children[MAX_DEAD_CHILDREN];
+#endif
+
 #define PROXY_BUF_SIZE 1024
 
 /* Establish a proxy connection on an open socket to a web proxy by using the
@@ -526,7 +536,19 @@ int is_a_socket(int fd)
 static void sigchld_handler(UNUSED(int val))
 {
 #ifdef WNOHANG
-	while (waitpid(-1, NULL, WNOHANG) > 0) {}
+	pid_t pid;
+	int status;
+	while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+		if (!WIFEXITED(status)) {
+			int n = (int)num_dead_children;
+			if (n < MAX_DEAD_CHILDREN) {
+				dead_children[n].pid = pid;
+				dead_children[n].status = status;
+				/* Increment last so the main loop sees a complete entry. */
+				num_dead_children = (sig_atomic_t)(n + 1);
+			}
+		}
+	}
 #endif
 #ifndef HAVE_SIGACTION
 	signal(SIGCHLD, sigchld_handler);
@@ -587,6 +609,29 @@ void start_accept_loop(int port, int (*fn)(int, int))
 
 		if (select(maxfd + 1, &fds, NULL, NULL, NULL) < 1)
 			continue;
+
+		/* Log any daemon children that exited abnormally (e.g. killed
+		 * by a signal) since the last select() returned. */
+#ifdef WNOHANG
+		while (num_dead_children > 0) {
+			int n = (int)num_dead_children - 1;
+			pid_t dead_pid = dead_children[n].pid;
+			int st = dead_children[n].status;
+			num_dead_children = (sig_atomic_t)n;
+#ifdef WCOREDUMP
+			if (WCOREDUMP(st))
+				rprintf(FLOG, "rsync daemon child %ld crashed (core dumped)\n",
+					(long)dead_pid);
+			else
+#endif
+			if (WIFSIGNALED(st))
+				rprintf(FLOG, "rsync daemon child %ld killed by signal %d\n",
+					(long)dead_pid, WTERMSIG(st));
+			else
+				rprintf(FLOG, "rsync daemon child %ld exited abnormally\n",
+					(long)dead_pid);
+		}
+#endif
 
 		for (i = 0, fd = -1; sp[i] >= 0; i++) {
 			if (FD_ISSET(sp[i], &fds)) {
