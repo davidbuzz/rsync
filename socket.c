@@ -53,7 +53,7 @@ static int sock_exec(const char *prog);
 #ifdef WNOHANG
 # define MAX_DEAD_CHILDREN 32
 struct dead_child { pid_t pid; int status; };
-static volatile sig_atomic_t num_dead_children;
+static volatile sig_atomic_t num_dead_children = 0;
 static struct dead_child dead_children[MAX_DEAD_CHILDREN];
 #endif
 
@@ -611,25 +611,42 @@ void start_accept_loop(int port, int (*fn)(int, int))
 			continue;
 
 		/* Log any daemon children that exited abnormally (e.g. killed
-		 * by a signal) since the last select() returned. */
+		 * by a signal) since the last select() returned.  We take a
+		 * snapshot of the list while SIGCHLD is blocked so the handler
+		 * cannot modify the shared array while we are reading it. */
 #ifdef WNOHANG
-		while (num_dead_children > 0) {
-			int n = (int)num_dead_children - 1;
-			pid_t dead_pid = dead_children[n].pid;
-			int st = dead_children[n].status;
-			num_dead_children = (sig_atomic_t)n;
-#ifdef WCOREDUMP
-			if (WCOREDUMP(st))
-				rprintf(FLOG, "rsync daemon child %ld crashed (core dumped)\n",
-					(long)dead_pid);
-			else
+		{
+			int j, snap_n;
+			struct dead_child snapshot[MAX_DEAD_CHILDREN];
+#ifdef HAVE_SIGPROCMASK
+			sigset_t block_chld, oldmask;
+			sigemptyset(&block_chld);
+			sigaddset(&block_chld, SIGCHLD);
+			sigprocmask(SIG_BLOCK, &block_chld, &oldmask);
 #endif
-			if (WIFSIGNALED(st))
-				rprintf(FLOG, "rsync daemon child %ld killed by signal %d\n",
-					(long)dead_pid, WTERMSIG(st));
-			else
-				rprintf(FLOG, "rsync daemon child %ld exited abnormally\n",
-					(long)dead_pid);
+			snap_n = (int)num_dead_children;
+			for (j = 0; j < snap_n; j++)
+				snapshot[j] = dead_children[j];
+			num_dead_children = 0;
+#ifdef HAVE_SIGPROCMASK
+			sigprocmask(SIG_SETMASK, &oldmask, NULL);
+#endif
+			for (j = 0; j < snap_n; j++) {
+				pid_t dead_pid = snapshot[j].pid;
+				int st = snapshot[j].status;
+#ifdef WCOREDUMP
+				if (WCOREDUMP(st))
+					rprintf(FLOG, "rsync daemon child %ld crashed (core dumped)\n",
+						(long)dead_pid);
+				else
+#endif
+				if (WIFSIGNALED(st))
+					rprintf(FLOG, "rsync daemon child %ld killed by signal %d\n",
+						(long)dead_pid, WTERMSIG(st));
+				else
+					rprintf(FLOG, "rsync daemon child %ld exited abnormally\n",
+						(long)dead_pid);
+			}
 		}
 #endif
 
