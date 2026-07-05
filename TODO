@@ -1,14 +1,21 @@
 -*- indented-text -*-
 
 FEATURES ------------------------------------------------------------
+Use chroot only if supported			[DONE rsync 3.2.0, 2020/06/19]
 Allow supplementary groups in rsyncd.conf			2002/04/09
+Handling IPv6 on old machines			[DONE rsync 2.5.0, 2001/11/30]
+Other IPv6 stuff				[DONE rsync 2.5.0+, 2001/11/30]
+Add ACL support							[DONE rsync 3.0.0, 2008/03/01]
+proxy authentication						[DONE rsync 2.5.x]
 SOCKS
 FAT support
 --diff						david.e.sewell	2002/03/15
+Add daemon --no-fork option			[DONE rsync 2.5.1, 2002/01/03]
 Create more granular verbosity					2003/05/15
 
 DOCUMENTATION --------------------------------------------------------
 Keep list of open issues and todos on the web site
+Perhaps redo manual as SGML			[DONE rsync 3.2.0, 2020/06/19]
 
 LOGGING --------------------------------------------------------------
 Memory accounting
@@ -21,6 +28,9 @@ internationalization
 
 DEVELOPMENT --------------------------------------------------------
 Handling duplicate names
+Use generic zlib					[DONE rsync 3.0.9, 2011/09/23]
+TDB							[DONE: not implemented, dropped]
+Splint							[DONE: obsolete, dropped]
 Allow skipping MD4 file_sum					2002/04/08
 loadparm.c: change lp_* return value to const char*
 options.c: Call poptReadDefaultConfig; handle errors
@@ -41,6 +51,11 @@ main.c: Log a proper message when a child process exits due to a signal
 main.c: Exit more gracefully when the send file list is empty
 Makefile.in: Add a 'dist' target
 
+PERFORMANCE ----------------------------------------------------------
+Traverse just one directory at a time		[DONE rsync 3.0.0, 2008/03/01]
+Allow skipping MD4 file_sum					2002/04/08
+Accelerate MD4					[DONE rsync 3.2.0, 2020/06/19]
+
 TESTING --------------------------------------------------------------
 Torture test
 Cross-test versions						2001/08/22
@@ -49,6 +64,7 @@ Test large files
 Create mutator program for testing
 Create configure option to enable dangerous tests
 Create pipe program for testing
+Create test makefile target for some tests	[DONE rsync 2.5.x]
 
 RELATED PROJECTS -----------------------------------------------------
 rsyncsh
@@ -61,12 +77,72 @@ reverse rsync over HTTP Range
 
 
 
+
 FEATURES ------------------------------------------------------------
+
+
+Use chroot only if supported[DONE rsync 3.2.0, 2020/06/19]
+
+  rsync now fully supports chroot on platforms where chroot(2) is
+  available.  As of rsync 3.2.0, the "use chroot" parameter in
+  rsyncd.conf defaults to "unset", which means rsync will use chroot
+  automatically when it can and fall back to a sanitized path traversal
+  when it cannot (e.g. when not running as root).  Prior to that, the
+  fallback behaviour was introduced incrementally across the 3.x series.
+
+                      --          --
 
 
 Allow supplementary groups in rsyncd.conf.5.md  Perhaps allow supplementary groups to be specified in rsyncd.conf;
   then make the first one the primary gid and all the rest be
   supplementary gids.
+
+                      --          --
+
+
+Handling IPv6 on old machines[DONE rsync 2.5.0, 2001/11/30]
+
+  IPv6 support was added in rsync 2.5.0 based on a patch from KAME.net.
+  rsync was rewritten to use the modern getaddrinfo()/getnameinfo()
+  interface.  Compatibility fallback implementations are provided in
+  lib/ (getaddrinfo.c, inet_ntop.c, inet_pton.c) for systems that
+  lack those functions.  The KAME-era lib/getaddrinfo.c compatibility
+  code was substantially revised in rsync 3.0.7 and later.
+
+                      --          --
+
+
+Other IPv6 stuff[DONE rsync 2.5.0+, 2001/11/30]
+
+  Multi-address connect (trying each address returned by getaddrinfo()
+  in turn until one succeeds) is implemented in socket.c.  Listening on
+  multiple passive addresses for daemons is also handled.  Literal IPv6
+  addresses in HOST:PATH syntax (e.g. [::1]) were added in rsync 2.6.3.
+  IPv6 literals in rsync: URLs and in rsyncd.conf hosts allow/deny
+  rules were added in subsequent releases.
+
+                      --          --
+
+
+Add ACL support/[DONE rsync 3.0.0, 2008/03/01]
+
+  ACL transfer was fully implemented in rsync 3.0.0 via the --acls (-A)
+  option.  Both POSIX ACLs and OS X ACLs are supported.  The
+  implementation lives in acls.c and integrates with the uidlist.c
+  name-mapping code so that ACL user/group names are translated across
+  systems.  A --fake-super mode also allows non-root users to store
+  foreign ACL data via extended attributes.
+
+                      --          --
+
+
+proxy authentication[DONE rsync 2.5.x]
+
+  HTTP Basic Proxy-Authentication is fully implemented.  Set
+  RSYNC_PROXY to user:pass@proxy.foo:3128/ and rsync will parse
+  out the user and password and send a Base64-encoded
+  Proxy-Authorization: Basic header in the HTTP CONNECT request.  The
+  code lives in socket.c (establish_proxy_connection()).
 
                       --          --
 
@@ -106,6 +182,18 @@ FAT support
                       --          --
 
 
+Add daemon --no-fork options.c E rsync 2.5.1, 2002/01/03]
+
+  Implemented as --no-detach in rsync 2.5.1.  Required to run rsync as
+  a Windows service, and also useful when running under daemontools,
+  AIX SRC, or a debugger.  The option prevents the daemon from
+  forking into the background and dissociating from the terminal,
+  making it possible to see log output on stderr and to attach a
+  debugger directly.
+
+                      --          --
+
+
 Create more granular verbosity2003/05/15
 
   Control output with the --report option.
@@ -125,6 +213,18 @@ DOCUMENTATION --------------------------------------------------------
 
 
 Keep list of open issues and todos on the web site
+
+                      --          --
+
+
+Perhaps redo manual as SGML[DONE rsync 3.2.0, 2020/06/19]
+
+  Done, but as Markdown rather than SGML.  In rsync 3.2.0 the manpages
+  were converted from yodl to Markdown (.md files), processed via a
+  Python 3 script using the cmarkgfm or commonmark library.  The
+  resulting sources are rsync.1.md, rsyncd.conf.5.md, and
+  rsync-ssl.1.md.  This made it much easier to package rsync since yodl
+  was a relatively obscure dependency.
 
                       --          --
 
@@ -234,6 +334,40 @@ Handling duplicate names
   cleaning the file list (see clean_flist()).  Another solution would
   be to add a hash table, and thus never put any duplicate names into
   the file list (and bump the protocol to handle this).
+
+                      --          --
+
+
+Use generic zlib/[DONE rsync 3.0.9, 2011/09/23]
+
+  As of rsync 3.0.9, rsync can be compiled against an unmodified system
+  zlib by passing --with-included-zlib=no to configure.  The bundled
+  zlib is still included as the default for compatibility, but the
+  external-zlib path (EXTERNAL_ZLIB define) is fully functional.
+  The bundled zlib is periodically updated to track upstream security
+  fixes; it was upgraded from 1.2.3 to 1.2.8 in rsync 3.0.9.
+
+                      --          --
+
+
+TDB[DONE: not implemented, dropped]
+
+  TDB (the Samba trivial database) was discussed as a way to handle
+  large file lists more efficiently.  The idea was never pursued in
+  rsync.  Modern rsync uses the existing pool allocator (lib/pool_alloc.c)
+  and incremental recursion (inc_recurse mode) instead, which together
+  keep memory use manageable without needing an embedded database.
+
+                      --          --
+
+
+Splint[DONE: obsolete, dropped]
+
+  Splint (Secure Programming Lint) is no longer maintained.  The
+  project has moved to using more modern static analysis tooling:
+  the codebase is regularly scanned with CodeQL (via GitHub Actions)
+  and developers are encouraged to build with AddressSanitizer and
+  UndefinedBehaviorSanitizer.  Splint annotations will not be added.
 
                       --          --
 
@@ -426,6 +560,45 @@ Makefile.in: Add a 'dist' target
 
                       --          --
 
+PERFORMANCE ----------------------------------------------------------
+
+Traverse just one directory at a time[DONE rsync 3.0.0, 2008/03/01]
+
+  Implemented as incremental recursion (inc_recurse mode) in rsync 3.0.0.
+  When talking to another rsync 3.x, rsync now builds the file list
+  incrementally, one directory at a time, and begins transferring files
+  before the full recursive scan is complete.  This dramatically reduces
+  startup latency and peak memory usage on large trees.  The option
+  --no-inc-recursive (or --no-i-r) disables this behaviour for
+  compatibility with older rsync versions.
+
+                      --          --
+
+
+Allow skipping MD4 file_sum2002/04/08
+
+  If we're doing a local transfer, or using -W, then perhaps don't
+  send the file checksum.  If we're doing a local transfer, then
+  calculating MD4 checksums uses 90% of CPU and is unlikely to be
+  useful.
+
+  (See also the full description in the DEVELOPMENT section above.)
+
+                      --          --
+
+
+Accelerate MD4[DONE rsync 3.2.0, 2020/06/19]
+
+  SIMD and assembly optimizations for the rolling checksum were added
+  in rsync 3.2.0.  On x86-64 systems, SSE2, SSSE3, and AVX2 paths are
+  provided in simd-checksum-x86_64.cpp / simd-checksum-avx2.S and are
+  selected at run time via cpuid.  An optional assembler path for the
+  rolling checksum from Shark64 was also added.  The MD4 and MD5 block
+  functions can additionally use OpenSSL's optimized implementations
+  when rsync is built with OpenSSL support.
+
+                      --          --
+
 TESTING --------------------------------------------------------------
 
 Torture test
@@ -497,6 +670,18 @@ Create pipe program for testing
   Create pipe program that makes slow/jerky connections for
   testing Versions of read() and write() that corrupt the
   stream, or abruptly fail
+
+                      --          --
+
+
+Create test makefile target for some testsuite/[DONE rsync 2.5.x]
+
+  The 'make check' (and its alias 'make test') target has been present
+  for many years.  Running 'make check' builds rsync and runs the test
+  suite in the testsuite/ directory via runtests.py.  Protocol
+  compatibility variants are available as 'make check29' and
+  'make check30'.  An installcheck target also exists to test an
+  already-installed rsync binary.
 
                       --          --
 
